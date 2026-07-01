@@ -144,9 +144,10 @@ def _run_musetalk(avatar: Path, audio: Path, out: Path) -> Path:
     work = out.parent
     wav = _to_wav(audio, work / "audio.wav")
     result_dir = work / "mt_results"
+    avatar_id = avatar.stem  # уникальный per source_id — иначе кеш аватара путается
     cfg = work / "mt_config.yaml"
     cfg.write_text(
-        "task:\n"
+        f"{avatar_id}:\n"
         "  preparation: True\n"
         "  bbox_shift: 0\n"
         f'  video_path: "{avatar}"\n'
@@ -161,7 +162,10 @@ def _run_musetalk(avatar: Path, audio: Path, out: Path) -> Path:
         "--fps", "25",
     ]
     t0 = time.time()
-    proc = subprocess.run(cmd, cwd=str(md), capture_output=True, text=True, timeout=60 * 12)
+    # stdin "n": если аватар уже подготовлен на этом (тёплом) воркере — НЕ пересоздавать,
+    # грузить кеш (быстро). На свежем воркере запроса нет — готовит сам. timeout 30 мин
+    # под первую подготовку полного DIMA.
+    proc = subprocess.run(cmd, cwd=str(md), input="n\n", capture_output=True, text=True, timeout=60 * 30)
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "")[-1800:]
         raise RuntimeError(f"musetalk inference failed (rc={proc.returncode}):\n{tail}")
