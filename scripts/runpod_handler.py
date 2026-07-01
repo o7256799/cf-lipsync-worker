@@ -169,14 +169,22 @@ def _run_musetalk(avatar: Path, audio: Path, out: Path) -> Path:
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "")[-1800:]
         raise RuntimeError(f"musetalk inference failed (rc={proc.returncode}):\n{tail}")
-    mp4s = sorted(result_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
-    if not mp4s:
+    # MuseTalk сохраняет в ./results/<ver>/avatars/<id>/vid_output/*.mp4 (относительно cwd),
+    # часто игнорируя --result_dir. Ищем в обоих местах, предпочитая vid_output.
+    cands = [
+        p for p in list((md / "results").rglob("*.mp4")) + list(result_dir.rglob("*.mp4"))
+        if p.exists() and p.stat().st_size > 0 and p.name != "temp.mp4"
+    ]
+    vid = [p for p in cands if "vid_output" in str(p)]
+    chosen = sorted(vid or cands, key=lambda p: p.stat().st_mtime)
+    if not chosen:
         raise RuntimeError(
-            f"musetalk produced no mp4 in {result_dir}. stdout tail:\n{(proc.stdout or '')[-800:]}"
+            f"musetalk produced no mp4 (searched {md}/results и {result_dir}). "
+            f"stdout tail:\n{(proc.stdout or '')[-800:]}"
         )
     out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(mp4s[-1], out)
-    print(f"[runpod] musetalk ok in {time.time() - t0:.1f}s -> {out} (from {mp4s[-1].name})")
+    shutil.copyfile(chosen[-1], out)
+    print(f"[runpod] musetalk ok in {time.time() - t0:.1f}s -> {out} (from {chosen[-1]})")
     return out
 
 
