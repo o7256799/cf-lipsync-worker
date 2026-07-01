@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+avatars/*.mp4
+avatars/*.mov
