@@ -37,5 +37,9 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/o7256799/cf-lipsync-worker:latest
+          tags: |
+            ghcr.io/o7256799/cf-lipsync-worker:latest
+            ghcr.io/o7256799/cf-lipsync-worker:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           provenance: false

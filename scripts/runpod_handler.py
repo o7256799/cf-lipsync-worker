@@ -129,7 +129,56 @@ def _resolve_avatar(source_id: str) -> Path:
     )
 
 
+def _to_wav(audio: Path, out_wav: Path) -> Path:
+    # MuseTalk/whisper надёжнее работают с wav 16k mono.
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(audio), "-ar", "16000", "-ac", "1", str(out_wav)],
+        capture_output=True, text=True, timeout=120,
+    )
+    return out_wav if (out_wav.exists() and out_wav.stat().st_size > 0) else audio
+
+
+def _run_musetalk(avatar: Path, audio: Path, out: Path) -> Path:
+    # MuseTalk realtime_inference — config-driven (YAML: avatar_id -> video_path + audio_clips).
+    md = Path(MODEL_CWD["musetalk"])
+    work = out.parent
+    wav = _to_wav(audio, work / "audio.wav")
+    result_dir = work / "mt_results"
+    cfg = work / "mt_config.yaml"
+    cfg.write_text(
+        "task:\n"
+        "  preparation: True\n"
+        "  bbox_shift: 0\n"
+        f'  video_path: "{avatar}"\n'
+        "  audio_clips:\n"
+        f'    clip0: "{wav}"\n'
+    )
+    cmd = [
+        "python", "-m", "scripts.realtime_inference",
+        "--version", "v15",
+        "--inference_config", str(cfg),
+        "--result_dir", str(result_dir),
+        "--fps", "25",
+    ]
+    t0 = time.time()
+    proc = subprocess.run(cmd, cwd=str(md), capture_output=True, text=True, timeout=60 * 12)
+    if proc.returncode != 0:
+        tail = (proc.stderr or proc.stdout or "")[-1800:]
+        raise RuntimeError(f"musetalk inference failed (rc={proc.returncode}):\n{tail}")
+    mp4s = sorted(result_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    if not mp4s:
+        raise RuntimeError(
+            f"musetalk produced no mp4 in {result_dir}. stdout tail:\n{(proc.stdout or '')[-800:]}"
+        )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(mp4s[-1], out)
+    print(f"[runpod] musetalk ok in {time.time() - t0:.1f}s -> {out} (from {mp4s[-1].name})")
+    return out
+
+
 def _run_model(model: str, avatar: Path, audio: Path, out: Path) -> Path:
+    if model == "musetalk":
+        return _run_musetalk(avatar, audio, out)
     cmd_tpl = MODEL_CMDS.get(model)
     if not cmd_tpl:
         raise RuntimeError(f"unknown lipsync model {model!r}. Known: {list(MODEL_CMDS)}")
