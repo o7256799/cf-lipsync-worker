@@ -27,20 +27,34 @@ RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-stati
     mv ffmpeg-*-amd64-static ffmpeg-4.4-amd64-static && \
     rm -f ffmpeg-release-amd64-static.tar.xz
 
-# 5) веса: убираем китайский hf-mirror из скрипта (из GitHub Actions недоступен/медленный),
-#    качаем с дефолтного huggingface.co
-# huggingface-cli УСТАРЕЛ и не работает (стал `hf`) — заменяем в скрипте, иначе все HF-загрузки
-# молча ничего не делают и образ собирается без весов. Плюс убираем недоступный hf-mirror.
-RUN sed -i '/HF_ENDPOINT/d; s/huggingface-cli download/hf download/g' download_weights.sh && bash download_weights.sh
+# 5) веса — качаем КАЖДЫЙ файл отдельной командой (позиционно). Не используем download_weights.sh:
+#    там multi-include (`hf download repo --include "a" "b"`) отдаёт не все файлы (мелкие .json теряются).
+RUN pip install --no-cache-dir gdown && set -eux; \
+    mkdir -p models/musetalk models/musetalkV15 models/sd-vae models/whisper models/dwpose models/syncnet models/face-parse-bisent; \
+    hf download TMElyralab/MuseTalk musetalk/musetalk.json          --local-dir models; \
+    hf download TMElyralab/MuseTalk musetalk/pytorch_model.bin      --local-dir models; \
+    hf download TMElyralab/MuseTalk musetalkV15/musetalk.json       --local-dir models; \
+    hf download TMElyralab/MuseTalk musetalkV15/unet.pth            --local-dir models; \
+    hf download stabilityai/sd-vae-ft-mse config.json               --local-dir models/sd-vae; \
+    hf download stabilityai/sd-vae-ft-mse diffusion_pytorch_model.bin --local-dir models/sd-vae; \
+    hf download openai/whisper-tiny config.json                     --local-dir models/whisper; \
+    hf download openai/whisper-tiny pytorch_model.bin               --local-dir models/whisper; \
+    hf download openai/whisper-tiny preprocessor_config.json        --local-dir models/whisper; \
+    hf download yzd-v/DWPose dw-ll_ucoco_384.pth                    --local-dir models/dwpose; \
+    hf download ByteDance/LatentSync latentsync_syncnet.pt          --local-dir models/syncnet || true; \
+    gdown --id 154JgKpzCPW82qINcVieuPH3fZ2e0P812 -O models/face-parse-bisent/79999_iter.pth || true; \
+    curl -L https://download.pytorch.org/models/resnet18-5c106cde.pth -o models/face-parse-bisent/resnet18-5c106cde.pth
 # ЖЁСТКО проверяем критичные веса — если чего-то нет, сборка падает здесь, не на GPU.
 RUN set -eux; \
-    test -f models/dwpose/dw-ll_ucoco_384.pth || \
-      hf download yzd-v/DWPose --local-dir models/dwpose --include "dw-ll_ucoco_384.pth"; \
-    ls -la models/dwpose models/musetalkV15 models/sd-vae models/whisper models/musetalk; \
+    ls -la models/dwpose models/musetalkV15 models/musetalk models/sd-vae models/whisper; \
     test -f models/dwpose/dw-ll_ucoco_384.pth; \
-    test -f models/musetalkV15/unet.pth; \
+    test -f models/musetalk/musetalk.json; \
+    test -f models/musetalk/pytorch_model.bin; \
     test -f models/musetalkV15/musetalk.json; \
+    test -f models/musetalkV15/unet.pth; \
+    test -f models/sd-vae/config.json; \
     test -f models/sd-vae/diffusion_pytorch_model.bin; \
+    test -f models/whisper/config.json; \
     test -f models/whisper/pytorch_model.bin
 
 # 6) слой handler'а
