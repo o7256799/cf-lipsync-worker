@@ -30,6 +30,17 @@ RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-stati
 # 5) веса: убираем китайский hf-mirror из скрипта (из GitHub Actions недоступен/медленный),
 #    качаем с дефолтного huggingface.co
 RUN sed -i '/HF_ENDPOINT/d' download_weights.sh && bash download_weights.sh
+# download_weights.sh без set -e молча пропускает сбои отдельных загрузок. Добираем DWPose
+# явно и ЖЁСТКО проверяем критичные веса — если чего-то нет, сборка падает здесь, не на GPU.
+RUN set -eux; \
+    test -f models/dwpose/dw-ll_ucoco_384.pth || \
+      huggingface-cli download yzd-v/DWPose --local-dir models/dwpose --include "dw-ll_ucoco_384.pth"; \
+    ls -la models/dwpose models/musetalkV15 models/sd-vae models/whisper models/musetalk; \
+    test -f models/dwpose/dw-ll_ucoco_384.pth; \
+    test -f models/musetalkV15/unet.pth; \
+    test -f models/musetalkV15/musetalk.json; \
+    test -f models/sd-vae/diffusion_pytorch_model.bin; \
+    test -f models/whisper/pytorch_model.bin
 
 # 6) слой handler'а
 RUN pip install --no-cache-dir runpod boto3 httpx
