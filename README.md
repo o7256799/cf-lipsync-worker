@@ -61,3 +61,5 @@ python -m app.cli render-video <script_id> --sync   # с provider=runpod в nich
 ## Модели
 - `musetalk` — primary (быстрый, audio-driven).
 - `liveportrait` — для A/B (пункт 10 роадмапа): добавить установку в Dockerfile + `LIVEPORTRAIT_CMD`.
+
+<!-- trigger runpod reindex 75773f9 -->
