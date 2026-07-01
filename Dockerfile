@@ -43,7 +43,7 @@ RUN pip install --no-cache-dir -U "huggingface_hub[cli]" gdown && set -eux; \
     hf download openai/whisper-tiny preprocessor_config.json        --local-dir models/whisper; \
     hf download yzd-v/DWPose dw-ll_ucoco_384.pth                    --local-dir models/dwpose; \
     hf download ByteDance/LatentSync latentsync_syncnet.pt          --local-dir models/syncnet || true; \
-    gdown --id 154JgKpzCPW82qINcVieuPH3fZ2e0P812 -O models/face-parse-bisent/79999_iter.pth || true; \
+    hf download ManyOtherFunctions/face-parse-bisent 79999_iter.pth --local-dir models/face-parse-bisent; \
     curl -L https://download.pytorch.org/models/resnet18-5c106cde.pth -o models/face-parse-bisent/resnet18-5c106cde.pth
 # ЖЁСТКО проверяем критичные веса — если чего-то нет, сборка падает здесь, не на GPU.
 RUN set -eux; \
@@ -56,7 +56,9 @@ RUN set -eux; \
     test -f models/sd-vae/config.json; \
     test -f models/sd-vae/diffusion_pytorch_model.bin; \
     test -f models/whisper/config.json; \
-    test -f models/whisper/pytorch_model.bin
+    test -f models/whisper/pytorch_model.bin; \
+    test -f models/face-parse-bisent/79999_iter.pth; \
+    test -f models/face-parse-bisent/resnet18-5c106cde.pth
 
 # 6) слой handler'а
 RUN pip install --no-cache-dir runpod boto3 httpx
