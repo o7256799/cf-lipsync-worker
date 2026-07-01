@@ -29,12 +29,13 @@ RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-stati
 
 # 5) веса: убираем китайский hf-mirror из скрипта (из GitHub Actions недоступен/медленный),
 #    качаем с дефолтного huggingface.co
-RUN sed -i '/HF_ENDPOINT/d' download_weights.sh && bash download_weights.sh
-# download_weights.sh без set -e молча пропускает сбои отдельных загрузок. Добираем DWPose
-# явно и ЖЁСТКО проверяем критичные веса — если чего-то нет, сборка падает здесь, не на GPU.
+# huggingface-cli УСТАРЕЛ и не работает (стал `hf`) — заменяем в скрипте, иначе все HF-загрузки
+# молча ничего не делают и образ собирается без весов. Плюс убираем недоступный hf-mirror.
+RUN sed -i '/HF_ENDPOINT/d; s/huggingface-cli download/hf download/g' download_weights.sh && bash download_weights.sh
+# ЖЁСТКО проверяем критичные веса — если чего-то нет, сборка падает здесь, не на GPU.
 RUN set -eux; \
     test -f models/dwpose/dw-ll_ucoco_384.pth || \
-      huggingface-cli download yzd-v/DWPose --local-dir models/dwpose --include "dw-ll_ucoco_384.pth"; \
+      hf download yzd-v/DWPose --local-dir models/dwpose --include "dw-ll_ucoco_384.pth"; \
     ls -la models/dwpose models/musetalkV15 models/sd-vae models/whisper models/musetalk; \
     test -f models/dwpose/dw-ll_ucoco_384.pth; \
     test -f models/musetalkV15/unet.pth; \
