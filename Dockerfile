@@ -29,7 +29,8 @@ RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-stati
 
 # 5) веса — качаем КАЖДЫЙ файл отдельной командой (позиционно). Не используем download_weights.sh:
 #    там multi-include (`hf download repo --include "a" "b"`) отдаёт не все файлы (мелкие .json теряются).
-RUN pip install --no-cache-dir gdown && set -eux; \
+RUN pip install --no-cache-dir -U "huggingface_hub[cli]" gdown && set -eux; \
+    command -v hf; \
     mkdir -p models/musetalk models/musetalkV15 models/sd-vae models/whisper models/dwpose models/syncnet models/face-parse-bisent; \
     hf download TMElyralab/MuseTalk musetalk/musetalk.json          --local-dir models; \
     hf download TMElyralab/MuseTalk musetalk/pytorch_model.bin      --local-dir models; \
