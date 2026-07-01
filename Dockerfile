@@ -72,7 +72,10 @@ RUN mkdir -p /avatars
 COPY avatars/ /avatars/
 COPY scripts/runpod_handler.py /opt/runpod_handler.py
 
-ENV AVATARS_DIR=/avatars \
+# Полный статический ffmpeg (с libx264/crf) ПЕРВЫМ в PATH — иначе MuseTalk берёт урезанный
+# conda-ffmpeg, который не знает -crf, и сборка итогового temp.mp4 падает.
+ENV PATH="/opt/MuseTalk/ffmpeg-4.4-amd64-static:${PATH}" \
+    AVATARS_DIR=/avatars \
     MUSETALK_DIR=/opt/MuseTalk \
     RUNPOD_DEFAULT_MODEL=musetalk
 
