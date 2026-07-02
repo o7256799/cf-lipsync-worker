@@ -1,6 +1,7 @@
 # RunPod serverless worker для lip-sync — LatentSync 1.6 (ByteDance), 512px, резкий рот.
-# Отдельный образ: у LatentSync свой стек (torch 2.5.1/cu121), не смешиваем с MuseTalk.
-FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+# CUDA 11.8 (а не 12.1): часть GPU-хостов RunPod имеют драйверы старее, чем требует cu121,
+# и падают "no kernel image is available". cu118 совместим с гораздо более старыми драйверами.
+FROM pytorch/pytorch:2.5.1-cuda11.8-cudnn9-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
 
@@ -12,8 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --depth 1 https://github.com/bytedance/LatentSync.git /opt/LatentSync
 WORKDIR /opt/LatentSync
 
-# зависимости модели (пинят torch==2.5.1 — совпадает с базой; huggingface-hub==0.30.2 → huggingface-cli рабочий)
-RUN pip install --no-cache-dir -r requirements.txt
+# зависимости модели. requirements пинят torch==2.5.1 c индексом cu121 — переводим на cu118,
+# чтобы torch/torchvision встали под cuda 11.8 (совпадает с базой), а не притащили cu121.
+RUN sed -i 's|whl/cu121|whl/cu118|g' requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --force-reinstall torch==2.5.1+cu118 torchvision==0.20.1+cu118 \
+        --index-url https://download.pytorch.org/whl/cu118
 
 # веса: latentsync_unet.pt (~5 ГБ) + whisper/tiny.pt. Жёстко проверяем.
 RUN set -eux; \
