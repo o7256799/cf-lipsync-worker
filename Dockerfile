@@ -21,10 +21,11 @@ ENV PIP_CONSTRAINT=/opt/pip-constraints.txt
 
 # зависимости модели. requirements пинят torch==2.5.1 c индексом cu121 — переводим на cu118,
 # чтобы torch/torchvision встали под cuda 11.8 (совпадает с базой), а не притащили cu121.
+# База pytorch:2.5.1-cuda11.8 УЖЕ содержит правильный torch 2.5.1+cu118 — НЕ переустанавливаем
+# (force-reinstall + PIP_CONSTRAINT ставили битый torch => no kernel image). requirements под cu118
+# (torch/torchvision уже удовлетворены базой, не трогаются). numpy держит PIP_CONSTRAINT выше.
 RUN sed -i 's|whl/cu121|whl/cu118|g' requirements.txt && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --force-reinstall torch==2.5.1+cu118 torchvision==0.20.1+cu118 \
-        --index-url https://download.pytorch.org/whl/cu118
+    pip install --no-cache-dir -r requirements.txt
 
 # веса: latentsync_unet.pt (~5 ГБ) + whisper/tiny.pt. Жёстко проверяем.
 RUN set -eux; \
