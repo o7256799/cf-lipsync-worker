@@ -27,15 +27,16 @@ RUN set -eux; \
 RUN pip install --no-cache-dir runpod boto3 httpx
 
 # полный статический ffmpeg первым в PATH (conda-ffmpeg без libx264 ломает кодирование)
-RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz && \
-    tar xf ffmpeg-release-amd64-static.tar.xz && mv ffmpeg-*-amd64-static /opt/ffmpeg-static && \
-    rm -f ffmpeg-release-amd64-static.tar.xz
+RUN wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz && \
+    tar xf ffmpeg-master-latest-linux64-gpl.tar.xz && \
+    mv ffmpeg-master-latest-linux64-gpl /opt/ffmpeg-static && \
+    rm -f ffmpeg-master-latest-linux64-gpl.tar.xz
 
 RUN mkdir -p /avatars
 COPY avatars/ /avatars/
 COPY scripts/runpod_handler.py /opt/runpod_handler.py
 
-ENV PATH="/opt/ffmpeg-static:${PATH}" \
+ENV PATH="/opt/ffmpeg-static/bin:${PATH}" \
     AVATARS_DIR=/avatars \
     LATENTSYNC_DIR=/opt/LatentSync \
     RUNPOD_DEFAULT_MODEL=latentsync
