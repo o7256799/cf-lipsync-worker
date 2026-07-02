@@ -62,6 +62,62 @@ MODEL_CWD = {
 }
 
 
+# ----------------------------------------------------------------------------- gpu diag
+def _nvidia_smi() -> dict:
+    out = {}
+    for label, args in (
+        ("list", ["nvidia-smi", "-L"]),
+        ("query", ["nvidia-smi",
+                   "--query-gpu=name,compute_cap,driver_version,memory.total",
+                   "--format=csv,noheader"]),
+    ):
+        try:
+            pr = subprocess.run(args, capture_output=True, text=True, timeout=30)
+            out[label] = (pr.stdout or pr.stderr or "").strip()
+        except Exception as e:  # noqa: BLE001
+            out[label] = f"<{type(e).__name__}: {e}>"
+    return out
+
+
+def _gpu_diag() -> dict:
+    """Собрать всё, что нужно, чтобы понять причину no-kernel-image:
+    какую compute capability отдаёт хост vs под какие арх собран torch."""
+    d: dict = {"nvidia_smi": _nvidia_smi()}
+    try:
+        import torch  # тяжёлый импорт — только в diag/ошибке, не на каждом инференсе
+        d["torch_version"] = torch.__version__
+        d["torch_cuda"] = torch.version.cuda
+        d["cuda_available"] = torch.cuda.is_available()
+        try:
+            d["torch_arch_list"] = torch.cuda.get_arch_list()  # sm_XX, под которые собран torch
+        except Exception as e:  # noqa: BLE001
+            d["torch_arch_list"] = f"<{type(e).__name__}: {e}>"
+        if torch.cuda.is_available():
+            try:
+                d["device_name"] = torch.cuda.get_device_name(0)
+                cap = torch.cuda.get_device_capability(0)
+                d["device_capability"] = f"sm_{cap[0]}{cap[1]}"
+                d["device_count"] = torch.cuda.device_count()
+                # ключевой вывод: знает ли собранный torch арх этой карты
+                arch = d.get("torch_arch_list") or []
+                d["arch_supported"] = (
+                    d["device_capability"] in arch if isinstance(arch, list) else "unknown"
+                )
+                # реальный тест: аллокация + матмул на GPU провоцирует no-kernel прямо здесь
+                try:
+                    x = torch.randn(64, 64, device="cuda")
+                    _ = (x @ x).sum().item()
+                    d["matmul_ok"] = True
+                except Exception as e:  # noqa: BLE001
+                    d["matmul_ok"] = False
+                    d["matmul_error"] = f"{type(e).__name__}: {e}"
+            except Exception as e:  # noqa: BLE001
+                d["device_error"] = f"{type(e).__name__}: {e}"
+    except Exception as e:  # noqa: BLE001
+        d["torch_error"] = f"{type(e).__name__}: {e}"
+    return d
+
+
 # ----------------------------------------------------------------------------- s3
 def _s3():
     return boto3.client(
@@ -237,7 +293,9 @@ def _run_latentsync(avatar: Path, audio: Path, out: Path) -> Path:
     proc = subprocess.run(cmd, cwd=str(ld), capture_output=True, text=True, timeout=60 * 20)
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "")[-1800:]
-        raise RuntimeError(f"latentsync failed (rc={proc.returncode}):\n{tail}")
+        # при no-kernel-image приложить железо/арх хоста — иначе не понять, на какой карте упало
+        smi = _nvidia_smi().get("query", "?")
+        raise RuntimeError(f"latentsync failed (rc={proc.returncode}) [gpu: {smi}]:\n{tail}")
     if not out.exists() or out.stat().st_size == 0:
         raise RuntimeError(f"latentsync produced no output. stdout tail:\n{(proc.stdout or '')[-800:]}")
     print(f"[runpod] latentsync ok in {time.time() - t0:.1f}s -> {out}")
@@ -293,6 +351,12 @@ def handler(event: dict) -> dict:
     source_id = inp.get("source_id")
     audio_url = inp.get("audio_url")
     model = (inp.get("model") or DEFAULT_MODEL).lower()
+
+    # diag-режим: не гоняем инференс, отдаём железо/torch хоста, чтобы понять no-kernel-image.
+    if model == "diag" or inp.get("diag"):
+        diag = _gpu_diag()
+        print(f"[runpod] diag job={job_id}: {diag}")
+        return {"diag": diag, "job_id": job_id}
 
     # тюнинг без пересборки: параметры из input -> env (читаются раннерами)
     for k, env in (("steps", "LATENTSYNC_STEPS"), ("guidance", "LATENTSYNC_GUIDANCE"),
