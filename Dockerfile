@@ -13,6 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --depth 1 https://github.com/bytedance/LatentSync.git /opt/LatentSync
 WORKDIR /opt/LatentSync
 
+# Жёстко фиксируем numpy==1.26.4 на ВСЮ сборку, включая изоляцию сборки C-расширений
+# (insightface/mmcv), иначе они компилируются под numpy 2, а рантайм — numpy 1 => ABI-конфликт
+# "numpy.dtype size changed, Expected 96, got 88".
+RUN printf 'numpy==1.26.4\n' > /opt/pip-constraints.txt
+ENV PIP_CONSTRAINT=/opt/pip-constraints.txt
+
 # зависимости модели. requirements пинят torch==2.5.1 c индексом cu121 — переводим на cu118,
 # чтобы torch/torchvision встали под cuda 11.8 (совпадает с базой), а не притащили cu121.
 RUN sed -i 's|whl/cu121|whl/cu118|g' requirements.txt && \
@@ -22,8 +28,8 @@ RUN sed -i 's|whl/cu121|whl/cu118|g' requirements.txt && \
 
 # веса: latentsync_unet.pt (~5 ГБ) + whisper/tiny.pt. Жёстко проверяем.
 RUN set -eux; \
-    huggingface-cli download ByteDance/LatentSync-1.6 latentsync_unet.pt --local-dir checkpoints; \
-    huggingface-cli download ByteDance/LatentSync-1.6 whisper/tiny.pt     --local-dir checkpoints; \
+    for i in 1 2 3 4 5; do huggingface-cli download ByteDance/LatentSync-1.6 latentsync_unet.pt --local-dir checkpoints && break || { echo "retry $i"; sleep 10; }; done; \
+    for i in 1 2 3 4 5; do huggingface-cli download ByteDance/LatentSync-1.6 whisper/tiny.pt --local-dir checkpoints && break || { echo "retry $i"; sleep 5; }; done; \
     ls -la checkpoints checkpoints/whisper; \
     test -f checkpoints/latentsync_unet.pt; \
     test -f checkpoints/whisper/tiny.pt
