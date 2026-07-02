@@ -188,7 +188,37 @@ def _run_musetalk(avatar: Path, audio: Path, out: Path) -> Path:
     return out
 
 
+def _run_latentsync(avatar: Path, audio: Path, out: Path) -> Path:
+    # LatentSync: video+audio -> out.mp4 напрямую, явный --video_out_path, 512px (резкий рот).
+    ld = Path(os.environ.get("LATENTSYNC_DIR", "/opt/LatentSync"))
+    work = out.parent
+    wav = _to_wav(audio, work / "audio.wav")
+    cfg = os.environ.get("LATENTSYNC_UNET_CFG", "configs/unet/stage2_512.yaml")
+    cmd = [
+        "python", "-m", "scripts.inference",
+        "--unet_config_path", cfg,
+        "--inference_ckpt_path", "checkpoints/latentsync_unet.pt",
+        "--inference_steps", "20",
+        "--guidance_scale", "1.5",
+        "--enable_deepcache",
+        "--video_path", str(avatar),
+        "--audio_path", str(wav),
+        "--video_out_path", str(out),
+    ]
+    t0 = time.time()
+    proc = subprocess.run(cmd, cwd=str(ld), capture_output=True, text=True, timeout=60 * 20)
+    if proc.returncode != 0:
+        tail = (proc.stderr or proc.stdout or "")[-1800:]
+        raise RuntimeError(f"latentsync failed (rc={proc.returncode}):\n{tail}")
+    if not out.exists() or out.stat().st_size == 0:
+        raise RuntimeError(f"latentsync produced no output. stdout tail:\n{(proc.stdout or '')[-800:]}")
+    print(f"[runpod] latentsync ok in {time.time() - t0:.1f}s -> {out}")
+    return out
+
+
 def _run_model(model: str, avatar: Path, audio: Path, out: Path) -> Path:
+    if model == "latentsync":
+        return _run_latentsync(avatar, audio, out)
     if model == "musetalk":
         return _run_musetalk(avatar, audio, out)
     cmd_tpl = MODEL_CMDS.get(model)
