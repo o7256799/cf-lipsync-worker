@@ -188,10 +188,35 @@ def _run_musetalk(avatar: Path, audio: Path, out: Path) -> Path:
     return out
 
 
+def _cap_video_side(src: Path, dst: Path) -> Path:
+    # Ограничить длинную сторону аватара (по умолч. 1280) — чтобы длинный/hi-res аватар (полный DIMA
+    # 1080x1920, 1600 кадров) не выжирал память и не ронял воркер OOM. Тюнится input.maxside.
+    maxside = int(os.environ.get("LATENTSYNC_MAX_SIDE", "1280"))
+    try:
+        pr = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(src)],
+            capture_output=True, text=True, timeout=60,
+        )
+        w, h = (int(x) for x in pr.stdout.strip().split("x")[:2])
+    except Exception:
+        return src
+    if max(w, h) <= maxside:
+        return src
+    vf = f"scale={maxside}:-2" if w >= h else f"scale=-2:{maxside}"
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", str(src), "-vf", vf, "-c:v", "libx264",
+         "-preset", "veryfast", "-crf", "18", "-an", str(dst)],
+        capture_output=True, text=True, timeout=300,
+    )
+    return dst if (dst.exists() and dst.stat().st_size > 0) else src
+
+
 def _run_latentsync(avatar: Path, audio: Path, out: Path) -> Path:
     # LatentSync: video+audio -> out.mp4 напрямую, явный --video_out_path, 512px (резкий рот).
     ld = Path(os.environ.get("LATENTSYNC_DIR", "/opt/LatentSync"))
     work = out.parent
+    avatar = _cap_video_side(avatar, work / "avatar_capped.mp4")  # анти-OOM для длинного/hi-res аватара
     wav = _to_wav(audio, work / "audio.wav")
     cfg = os.environ.get("LATENTSYNC_UNET_CFG", "configs/unet/stage2_512.yaml")
     steps = os.environ.get("LATENTSYNC_STEPS", "30")      # 30 по умолчанию (было 20) — чётче/стабильнее
@@ -271,7 +296,7 @@ def handler(event: dict) -> dict:
 
     # тюнинг без пересборки: параметры из input -> env (читаются раннерами)
     for k, env in (("steps", "LATENTSYNC_STEPS"), ("guidance", "LATENTSYNC_GUIDANCE"),
-                   ("deepcache", "LATENTSYNC_DEEPCACHE")):
+                   ("deepcache", "LATENTSYNC_DEEPCACHE"), ("maxside", "LATENTSYNC_MAX_SIDE")):
         if inp.get(k) is not None:
             os.environ[env] = str(inp[k])
 
