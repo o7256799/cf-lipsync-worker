@@ -24,7 +24,9 @@ RUN set -eux; \
     test -f checkpoints/whisper/tiny.pt
 
 # слой handler'а
-RUN pip install --no-cache-dir runpod boto3 httpx
+# runpod ПИНИМ на 1.7.10: версии >=1.7.11 имеют баг балансировки (задачи виснут в очереди,
+# всё уходит на один воркер) — runpod-python#432. Именно это ловили как "RunPod не отдаёт задачи".
+RUN pip install --no-cache-dir "runpod==1.7.10" boto3 httpx
 
 # полный статический ffmpeg первым в PATH (conda-ffmpeg без libx264 ломает кодирование)
 RUN wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz && \
