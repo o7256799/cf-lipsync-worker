@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git ffmpeg libgl1 libglib2.0-0 wget curl ca-certificates \
+        build-essential cmake \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 https://github.com/bytedance/LatentSync.git /opt/LatentSync
