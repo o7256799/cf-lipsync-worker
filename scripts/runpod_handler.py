@@ -194,17 +194,20 @@ def _run_latentsync(avatar: Path, audio: Path, out: Path) -> Path:
     work = out.parent
     wav = _to_wav(audio, work / "audio.wav")
     cfg = os.environ.get("LATENTSYNC_UNET_CFG", "configs/unet/stage2_512.yaml")
+    steps = os.environ.get("LATENTSYNC_STEPS", "30")      # 30 по умолчанию (было 20) — чётче/стабильнее
+    guidance = os.environ.get("LATENTSYNC_GUIDANCE", "1.5")
     cmd = [
         "python", "-m", "scripts.inference",
         "--unet_config_path", cfg,
         "--inference_ckpt_path", "checkpoints/latentsync_unet.pt",
-        "--inference_steps", "20",
-        "--guidance_scale", "1.5",
-        "--enable_deepcache",
+        "--inference_steps", str(steps),
+        "--guidance_scale", str(guidance),
         "--video_path", str(avatar),
         "--audio_path", str(wav),
         "--video_out_path", str(out),
     ]
+    if os.environ.get("LATENTSYNC_DEEPCACHE", "1") != "0":  # deepcache=0 → медленнее, но чуть качественнее
+        cmd.append("--enable_deepcache")
     t0 = time.time()
     proc = subprocess.run(cmd, cwd=str(ld), capture_output=True, text=True, timeout=60 * 20)
     if proc.returncode != 0:
@@ -265,6 +268,12 @@ def handler(event: dict) -> dict:
     source_id = inp.get("source_id")
     audio_url = inp.get("audio_url")
     model = (inp.get("model") or DEFAULT_MODEL).lower()
+
+    # тюнинг без пересборки: параметры из input -> env (читаются раннерами)
+    for k, env in (("steps", "LATENTSYNC_STEPS"), ("guidance", "LATENTSYNC_GUIDANCE"),
+                   ("deepcache", "LATENTSYNC_DEEPCACHE")):
+        if inp.get(k) is not None:
+            os.environ[env] = str(inp[k])
 
     if not source_id:
         raise ValueError("input.source_id is required (avatar болванка)")
